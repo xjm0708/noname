@@ -1480,10 +1480,12 @@ body > .background.land {
 	border-radius: 14px;
 }
 
-div:not(.handcards) > .card:not(.thrown) > .info,
+div:not(.handcards):not(.handcards-container) > .card:not(.thrown) > .info,
+div:not(.handcards):not(.handcards-container) > .card:not(.thrown) > .name,
 .handcards > .card:last-child > .info,
-div:not(.handcards) > .card:not(.thrown) > .name,
-.handcards > .card:last-child > .name {
+.handcards > .card:last-child > .name,
+.handcards-container > .card:last-child > .info,
+.handcards-container > .card:last-child > .name {
 	transform: none !important;
 }
 
@@ -2202,6 +2204,71 @@ div.select-all:not(.card):not(.player) {
 	position: absolute;
 	left: 50%;
 }
+
+/*--------按钮过多时：左对齐单行 + 横向滚动 + 顶部自绘滚动条--------*/
+#control.controloverflow {
+	/* 顶部自绘滚动条占用的高度：JS 读这个变量，不再另存一份固定值 */
+	--control-scrollbar-height: 10px;
+	overflow-x: auto;
+	overflow-y: hidden;
+	text-align: left;
+	transition: none;
+	overflow-anchor: none;
+	scrollbar-width: none;
+	-ms-overflow-style: none;
+	-webkit-overflow-scrolling: touch;
+	touch-action: pan-x;
+}
+#control.controloverflow::-webkit-scrollbar {
+	display: none;
+	width: 0;
+	height: 0;
+}
+#control.controloverflow > .control {
+	left: 0;
+	top: var(--control-scrollbar-height);
+	width: max-content;
+	/* 按钮条可能有几千像素宽，缩放必须绕左边缘，否则可见部分会整体位移 */
+	transform-origin: 0 50%;
+}
+/* 按下反馈只缩放被按下的那一个按钮 */
+/* 全局 div 是 all 0.5s 过渡，缩放单独降到 0.1s，才和普通布局的按下反馈一样即时 */
+#control.controloverflow > .control > div {
+	transition: transform 0.1s, opacity 0.5s, top 0.5s, box-shadow 0.5s;
+}
+#control.controloverflow > .control > .controlpressed {
+	transform: scale(0.94);
+}
+#control.controloverflow > .controlscrollbar {
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: 0;
+	height: var(--control-scrollbar-height);
+	display: none;
+	pointer-events: auto;
+	touch-action: none;
+	cursor: pointer;
+	transition: none;
+}
+#control.controloverflow > .controlscrollbar.visible {
+	display: block;
+}
+#control.controloverflow > .controlscrollbar > .controlscrollthumb {
+	position: absolute;
+	left: 0;
+	top: 2px;
+	height: calc(var(--control-scrollbar-height) - 4px);
+	border-radius: calc((var(--control-scrollbar-height) - 4px) / 2);
+	background: rgba(110, 110, 110, 0.8);
+	box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+	transition: none;
+}
+#control.controloverflow > .controlscrollbar:hover > .controlscrollthumb,
+#control.controloverflow > .controlscrollbar.dragging > .controlscrollthumb {
+	background: rgba(70, 70, 70, 0.95);
+}
+
 #arena.choose-to-move > #control,
 #arena.discard-player-card > #control,
 #arena.gain-player-card > #control,
@@ -5731,4 +5798,27 @@ progress.progress::-webkit-progress-value {
 #window noname-poptip {
 	text-decoration: underline;
 	font-weight: bolder;
+}
+
+.card.oljuhun {
+	background: #f5f0df !important;
+	color: #171717 !important;
+}
+.card.oljuhun > :not(.oljuhun-label) {
+	visibility: hidden !important;
+}
+.card.oljuhun > .oljuhun-label {
+	display: block !important;
+	visibility: visible !important;
+}
+.card.oljuhun.selectable:not(.selected) {
+	outline: 2px solid #eac35b !important;
+	outline-offset: -3px;
+}
+.card.oljuhun.selected {
+	outline: 3px solid #fff0a0 !important;
+	outline-offset: -3px;
+}
+#arena.selecting .card.oljuhun:not(.selectable):not(.selected) {
+	filter: brightness(0.48) grayscale(0.65) !important;
 }

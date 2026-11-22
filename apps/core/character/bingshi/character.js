@@ -1,4 +1,35 @@
 const characters = {
+	pot_zhaoyun: {
+		sex: "male",
+		group: "shu",
+		hp: 4,
+		skills: ["potwuyi", "potcuifeng"],
+	},
+	pot_heqi: {
+		sex: "male",
+		group: "wu",
+		hp: 4,
+		skills: ["potshanxi", "potqizhou"],
+	},
+	pot_xiaoqiao: {
+		sex: "female",
+		group: "wu",
+		hp: 3,
+		skills: ["potheyun", "potyinhui"],
+		names: "桥|null",
+	},
+	pot_zhouyu: {
+		sex: "male",
+		group: "wu",
+		hp: 4,
+		skills: ["potchiyun", "potyanhui", "potfentao", "potxiongzi"],
+	},
+	pot_chengpu: {
+		sex: "male",
+		group: "wu",
+		hp: 4,
+		skills: ["potduzuo", "potbihan"],
+	},
 	pot_xiahouba: {
 		sex: "male",
 		group: "shu",
@@ -41,12 +72,6 @@ const characters = {
 		group: "wu",
 		hp: 4,
 		skills: ["potnigu", "potlulian"],
-	},
-	zhuji: {
-		sex: "male",
-		group: "wu",
-		hp: 4,
-		skills: ["potjiezhu", "pothuanshi"],
 	},
 	sp_zhonghui: {
 		sex: "male",
@@ -192,7 +217,6 @@ const characters = {
 		group: "wei",
 		hp: 3,
 		skills: ["spmiaolve", "spyingjia"],
-		img: "image/character/tw_dongzhao.jpg",
 		dieAudios: ["tw_dongzhao"],
 	},
 	pot_taishici: {

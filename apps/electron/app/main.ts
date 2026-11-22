@@ -1,16 +1,11 @@
 /// <reference types="vite/client" />
-import { app, BrowserWindow, crashReporter } from "electron";
+import { app, BrowserWindow, crashReporter, dialog, Menu, shell } from "electron";
 import fs from "fs";
 import path from "path";
 import remote from "@electron/remote/main/index.js";
-import createApp from "@noname/fs";
+import { LOCAL_HOST, registerLocalProtocol } from "./local-protocol";
 remote.initialize();
 const dirname = path.join(import.meta.dirname, "../");
-createApp({
-	port: 8089,
-	dirname,
-	server: true,
-});
 
 // 获取单实例锁
 const gotTheLock = app.requestSingleInstanceLock();
@@ -21,8 +16,10 @@ if (!gotTheLock) {
 
 app.setAppUserModelId("com.libnoname.noname");
 
-//防止32位无名杀的乱码
+// 防止32位无名杀的乱码
 app.setName("无名杀");
+// protocol.handle 内部会 new Headers(request.headers)，非 Latin-1 的 UA 会使其抛错（ERR_UNEXPECTED）
+app.userAgentFallback = app.userAgentFallback.replace("无名杀", "noname");
 
 function setPath(path1: any, path2: any) {
 	app.getPath(path1);
@@ -96,13 +93,78 @@ function createMainWindow() {
 	if (import.meta.env.DEV) {
 		win.loadURL(`http://localhost:8080`);
 	} else {
-		win.loadURL(`http://localhost:8089/index.html`);
+		win.loadURL(`http://${LOCAL_HOST}/index.html`);
 	}
 	remote.enable(win.webContents);
+	const menuTemplate: Electron.MenuItemConstructorOptions[] = [
+		{
+			label: "操作",
+			submenu: [
+				{
+					label: "打开无名杀目录",
+					click: () => {
+						shell.showItemInFolder(path.join(app.getAppPath(), "app"));
+					},
+				},
+			],
+		},
+		{
+			label: "窗口",
+			submenu: [
+				{
+					label: "重新加载当前窗口",
+					role: "reload",
+				},
+				{
+					label: "打开/关闭控制台",
+					role: "toggleDevTools",
+				},
+				{
+					type: "separator",
+				},
+				{
+					label: "全屏模式",
+					role: "togglefullscreen",
+				},
+				{
+					label: "最小化",
+					role: "minimize",
+				},
+				{
+					type: "separator",
+				},
+			],
+		},
+		{
+			label: "帮助",
+			submenu: [
+				{
+					label: "bug反馈",
+					click: () => {
+						shell.openExternal("https://tieba.baidu.com/p/9117747182");
+					},
+				},
+				{
+					label: "版权声明",
+					click: () => {
+						dialog.showMessageBoxSync(win, {
+							message:
+								"【无名杀】属于个人（水乎）开发项目且【完全免费】。如非法倒卖用于牟利将承担法律责任 开发团队将追究到底",
+							type: "info",
+							title: "版权声明",
+							icon: path.join(app.getAppPath(), "app", "noname.ico"),
+						});
+					},
+				},
+			],
+		},
+	];
+	Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate));
 	return win;
 }
 
 app.whenReady().then(() => {
+	if (!import.meta.env.DEV) registerLocalProtocol(dirname);
 	createWindow();
 	app.on("activate", () => {
 		if (BrowserWindow.getAllWindows().length === 0) {

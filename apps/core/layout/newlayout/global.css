@@ -369,6 +369,12 @@
 		margin-right 0.4s cubic-bezier(0.23, 1, 0.32, 1);
 	will-change: transform, margin-right;
 }
+/*.handcards-container > .card > .info {
+	transform: translateX(-52px) translateY(-3px);
+}
+.handcards-container > .card > .name {
+	transform: translateY(14px);
+}*/
 .handcards-container > .card:last-child {
 	margin-right: 0 !important;
 }
@@ -1030,4 +1036,27 @@
 		margin-bottom: -12px;
 		transform: scale(0) rotate(90deg);
 	}
+}
+
+.card.oljuhun {
+	background: #f5f0df !important;
+	color: #171717 !important;
+}
+.card.oljuhun > :not(.oljuhun-label) {
+	visibility: hidden !important;
+}
+.card.oljuhun > .oljuhun-label {
+	display: block !important;
+	visibility: visible !important;
+}
+.card.oljuhun.selectable:not(.selected) {
+	outline: 2px solid #eac35b !important;
+	outline-offset: -3px;
+}
+.card.oljuhun.selected {
+	outline: 3px solid #fff0a0 !important;
+	outline-offset: -3px;
+}
+#arena.selecting .card.oljuhun:not(.selectable):not(.selected) {
+	filter: brightness(0.48) grayscale(0.65) !important;
 }

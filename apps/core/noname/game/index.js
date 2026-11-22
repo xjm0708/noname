@@ -15,6 +15,7 @@ import { isClass, userAgentLowerCase, GeneratorFunction, AsyncFunction, delay } 
 
 import { DynamicStyle } from "./dynamic-style/index.js";
 import { GamePromises } from "./promises.js";
+import { normalizeConnectAddress } from "./connect-url.js";
 import { Check } from "./check.js";
 
 import { security } from "@/util/sandbox.js";
@@ -680,22 +681,23 @@ export class Game {
 	 */
 	addTempTag(id, translation) {
 		game.addVideo("addTempTag", null, [id, translation]);
-		game.broadcastAll(
+		// 重连恢复翻译
+		_status.postReconnect.addTempTag ??= [
+			list => {
+				for (const args of list) {
+					// @ts-expect-error ignore
+					game.addTempTag(...args);
+				}
+			},
+			[],
+		];
+		_status.postReconnect.addTempTag[1].push([id, translation]);
+		// 翻译
+		lib.translate[id] = translation;
+		game.broadcast(
 			// @ts-expect-error ignore
 			(id, translation) => {
-				if (!lib.translate[id]) {
-					lib.translate[id] = translation;
-					_status.postReconnect.addTempTag ??= [
-						list => {
-							for (const args of list) {
-								// @ts-expect-error ignore
-								game.addTempTag(...args);
-							}
-						},
-						[],
-					];
-					_status.postReconnect.addTempTag[1].push([id, translation]);
-				}
+				lib.translate[id] = translation;
 			},
 			id,
 			translation
@@ -2126,44 +2128,16 @@ export class Game {
 			return;
 		}
 
-		let tempUrl;
-		// 如果能直接解析出URL，且协议为ws或wss，则直接赋值成URL，且不作其他处理
-		// （当然实际上，如果保证给定的地址以"ws://"或"wss://"开头，基本能判定为URL，无需重复判断）
-		if (URL.canParse(ip) && (ip.startsWith("ws://") || ip.startsWith("wss://"))) {
-			tempUrl = new URL(ip);
-		}
-		// 否则就尝试解析成URL，并套用约定的格式
-		else {
-			const protocol = get.config("wss_mode", "connect") ? "wss://" : "ws://";
-			let tempHref = `${protocol}${ip}`;
-
-			tempUrl = new URL(tempHref);
-
-			const ipv4Regex = /^(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
-			const ipv6Regex = /^(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))$/;
-
-			// 如果给定的地址是纯ip地址，则自动添加8080端口，兼容以前的地址
-			if (ipv4Regex.test(ip) || ipv6Regex.test(ip)) {
-				tempUrl.port = "8080";
+		const tempUrl = normalizeConnectAddress(ip, !!get.config("wss_mode", "connect"));
+		if (!tempUrl) {
+			alert("错误：无效联机地址");
+			if (callback) {
+				callback(false);
 			}
-			// 否则...鉴于原先存在地址为域名/localhost的情况，鉴于原先的联机地址不兼容pathname，如果pathname为"/"，则多加判断
-			else if (tempUrl.pathname == "/") {
-				let withport = false;
-				let index = ip.lastIndexOf(":");
-				if (index != -1) {
-					index = parseFloat(ip.slice(index + 1));
-					if (index && Math.floor(index) == index) {
-						withport = true;
-					}
-				}
-
-				if (!withport) {
-					tempUrl.port = "8080";
-				}
-			}
+			return;
 		}
-
 		const url = tempUrl.href;
+		console.log(`正在连接 ${url}`);
 
 		_status.connectCallback = callback;
 		try {
@@ -2463,9 +2437,9 @@ export class Game {
 			args.length === 1 && get.objtype(args[0]) === "object"
 				? args[0]
 				: {
-					path: args.filter(arg => typeof arg === "string" || typeof arg === "number").join("/"),
-					onError: args.find(arg => typeof arg === "function"),
-				};
+						path: args.filter(arg => typeof arg === "string" || typeof arg === "number").join("/"),
+						onError: args.find(arg => typeof arg === "function"),
+					};
 
 		const {
 			path = "",
@@ -5086,7 +5060,7 @@ ${e instanceof Error ? e.stack : String(e)}`);
 			}
 		}
 		if (!callback) {
-			callback = function () { };
+			callback = function () {};
 		}
 		//try{
 		//	if(noinput){
@@ -6516,7 +6490,7 @@ ${e instanceof Error ? e.stack : String(e)}`);
 	 * @param { Card | string } name
 	 * @param { string } suit
 	 * @param { number } number
-	 * @param { string } nature
+	 * @param { string } [nature]
 	 */
 	createCard2() {
 		let card = game.createCard.apply(this, arguments);
@@ -6558,7 +6532,8 @@ ${e instanceof Error ? e.stack : String(e)}`);
 			tr,
 			td,
 			dialog,
-			hsMap = new Map([]);
+			hsMap = new Map([]),
+			poptipData = new Map([]);
 		for (const target of [...game.players, ...game.dead]) {
 			hsMap.set(target, target.getCards("h"));
 		}
@@ -6588,6 +6563,22 @@ ${e instanceof Error ? e.stack : String(e)}`);
 				dialog.content.firstChild.innerHTML = "战斗胜利";
 			} else if (result2 == false) {
 				dialog.content.firstChild.innerHTML = "战斗失败";
+			}
+			const poptipData = arguments[2];
+			if (poptipData instanceof Map) {
+				const players = game.players.concat(game.dead, game.additionaldead || []);
+				for (const target of players) {
+					if (!poptipData.has(target.playerid)) continue;
+					const [id, hs] = poptipData.get(target.playerid);
+					lib.poptip.add({
+						id,
+						name: `<img style="width:15px; vertical-align: middle;" src="${lib.assetURL}image/card/handcard.png">`,
+						dialog(dialog) {
+							dialog.add(`${get.translation(target)}的手牌`);
+							dialog[hs.length ? "addSmall" : "addText"](hs.length ? hs : "（没有手牌）");
+						},
+					});
+				}
 			}
 			ui.update();
 			dialog.add(ui.create.div(".placeholder"));
@@ -6853,7 +6844,10 @@ ${e instanceof Error ? e.stack : String(e)}`);
 				tr.appendChild(td);
 				td = document.createElement("td");
 				let target = game.players[i];
-				td.innerHTML = get.poptip({
+				const poptipId = get.id();
+				poptipData.set(target.playerid, [poptipId, hsMap.get(target) ?? []]);
+				game.broadcastAll(item => lib.poptip.add(item), {
+					id: poptipId,
 					name: `<img style="width:15px; vertical-align: middle;" src="${lib.assetURL}image/card/handcard.png">`,
 					dialog(dialog) {
 						let hs = hsMap.get(target) ?? [];
@@ -6862,6 +6856,7 @@ ${e instanceof Error ? e.stack : String(e)}`);
 						return dialog;
 					},
 				});
+				td.innerHTML = get.poptip(poptipId);
 				tr.appendChild(td);
 				table.appendChild(tr);
 			}
@@ -6946,7 +6941,10 @@ ${e instanceof Error ? e.stack : String(e)}`);
 				tr.appendChild(td);
 				td = document.createElement("td");
 				let target = game.dead[i];
-				td.innerHTML = get.poptip({
+				const poptipId = get.id();
+				poptipData.set(target.playerid, [poptipId, hsMap.get(target) ?? []]);
+				game.broadcastAll(item => lib.poptip.add(item), {
+					id: poptipId,
 					name: `<img style="width:15px; vertical-align: middle;" src="${lib.assetURL}image/card/handcard.png">`,
 					dialog(dialog) {
 						let hs = hsMap.get(target) ?? [];
@@ -6955,6 +6953,7 @@ ${e instanceof Error ? e.stack : String(e)}`);
 						return dialog;
 					},
 				});
+				td.innerHTML = get.poptip(poptipId);
 				tr.appendChild(td);
 				table.appendChild(tr);
 			}
@@ -7016,7 +7015,10 @@ ${e instanceof Error ? e.stack : String(e)}`);
 				tr.appendChild(td);
 				td = document.createElement("td");
 				let target = game.additionaldead[i];
-				td.innerHTML = get.poptip({
+				const poptipId = get.id();
+				poptipData.set(target.playerid, [poptipId, hsMap.get(target) ?? []]);
+				game.broadcastAll(item => lib.poptip.add(item), {
+					id: poptipId,
 					name: `<img style="width:15px; vertical-align: middle;" src="${lib.assetURL}image/card/handcard.png">`,
 					dialog(dialog) {
 						let hs = hsMap.get(target) ?? [];
@@ -7025,6 +7027,8 @@ ${e instanceof Error ? e.stack : String(e)}`);
 						return dialog;
 					},
 				});
+				td.innerHTML = get.poptip(poptipId);
+				tr.appendChild(td);
 				table.appendChild(tr);
 			}
 			dialog.add(ui.create.div(".placeholder"));
@@ -7033,10 +7037,10 @@ ${e instanceof Error ? e.stack : String(e)}`);
 		// }
 		dialog.add(ui.create.div(".placeholder"));
 
-		let clients = game.players.concat(game.dead);
+		let clients = game.players.concat(game.dead, game.additionaldead || []);
 		for (let i = 0; i < clients.length; i++) {
 			if (clients[i].isOnline2()) {
-				clients[i].send(game.over, dialog.content.innerHTML, game.checkOnlineResult(clients[i]));
+				clients[i].send(game.over, dialog.content.innerHTML, game.checkOnlineResult(clients[i]), poptipData);
 			}
 		}
 
@@ -8574,6 +8578,7 @@ ${e instanceof Error ? e.stack : String(e)}`);
 				}
 			},
 		]);
+		return next;
 	}
 	updateRoundNumber() {
 		game.broadcastAll(
@@ -8644,21 +8649,21 @@ ${e instanceof Error ? e.stack : String(e)}`);
 		}
 	}
 	finishSkill(skillId, sub) {
-		const mode = get.mode(),
-			info = lib.skill[skillId],
-			iInfo = `${skillId}_info`;
-		if (_status.mode && lib.translate[iInfo + "_" + mode + "_" + _status.mode]) {
-			lib.translate[iInfo] = lib.translate[iInfo + "_" + mode + "_" + _status.mode];
+		const mode = get.mode();
+		const info = lib.skill[skillId];
+		const iInfo = `${skillId}_info`;
+		if (_status.mode && lib.translate[`${iInfo}_${mode}_${_status.mode}`]) {
+			lib.translate[iInfo] = lib.translate[`${iInfo}_${mode}_${_status.mode}`];
 		} else if (lib.translate[`${iInfo}_${mode}`]) {
 			lib.translate[iInfo] = lib.translate[`${iInfo}_${mode}`];
-		} else if (lib.translate[`${iInfo}_zhu`] && (mode == "identity" || (mode == "guozhan" && _status.mode == "four"))) {
+		} else if (lib.translate[`${iInfo}_zhu`] && (mode === "identity" || (mode === "guozhan" && _status.mode === "four"))) {
 			lib.translate[iInfo] = lib.translate[`${iInfo}_zhu`];
 		} else if (lib.translate[`${iInfo}_combat`] && get.is.versus()) {
 			lib.translate[iInfo] = lib.translate[`${iInfo}_combat`];
 		}
 		info.skill_id ??= skillId;
-		let deleteSkill = function (skill, iInfo) {
-			let { audio, audioname, audioname2, skillID } = lib.skill[skill] || {};
+		const deleteSkill = (skill, iInfo) => {
+			const { audio, audioname, audioname2, skillID } = lib.skill[skill] || {};
 			lib.skill[skill] = { audio, audioname, audioname2, skillID };
 			lib.translate[iInfo] &&= "此模式下不可用";
 			lib.dynamicTranslate[skill] &&= () => "此模式下不可用";
@@ -8667,11 +8672,15 @@ ${e instanceof Error ? e.stack : String(e)}`);
 			const skill = lib.skill[info.inherit];
 			if (skill) {
 				Object.keys(skill).forEach(value => {
-					if (info[value] == undefined) {
-						if (value == "audio" && (typeof info[value] == "number" || typeof info[value] == "boolean")) {
+					if (info[value] == null) {
+						if (value === "audio" && (typeof info[value] === "number" || typeof info[value] === "boolean")) {
 							info[value] = info.inherit;
 						} else {
-							info[value] = skill[value];
+							if (typeof skill[value] === "object") {
+								info[value] = get.copy(skill[value]);
+							} else {
+								info[value] = skill[value];
+							}
 						}
 					}
 				});
@@ -8679,12 +8688,12 @@ ${e instanceof Error ? e.stack : String(e)}`);
 			lib.translate[skillId] ??= lib.translate[info.inherit];
 			lib.translate[iInfo] ??= lib.translate[`${info.inherit}_info`];
 		}
-		if (info.forbid?.includes(mode) || info.mode?.includes(mode) == false || info.available?.(mode) == false) {
+		if (info.forbid?.includes(mode) || info.mode?.includes(mode) === false || info.available?.(mode) === false) {
 			deleteSkill(skillId, iInfo);
 			return;
 		}
-		if (info.viewAs && typeof info.viewAs != "function") {
-			if (typeof info.viewAs == "string") {
+		if (info.viewAs && typeof info.viewAs !== "function") {
+			if (typeof info.viewAs === "string") {
 				info.viewAs = {
 					name: info.viewAs,
 				};
@@ -8693,18 +8702,22 @@ ${e instanceof Error ? e.stack : String(e)}`);
 				deleteSkill(skillId, iInfo);
 				return;
 			}
-			if (info.ai == undefined) {
+			if (info.ai == null) {
 				info.ai = {};
 			}
-			const skill = info.ai,
-				card = lib.card[info.viewAs.name].ai;
+			const skill = info.ai;
+			const card = lib.card[info.viewAs.name].ai;
 			if (card) {
 				Object.keys(card).forEach(value => {
-					if (skill[value] == undefined) {
-						skill[value] = card[value];
-					} else if (typeof skill[value] == "object") {
+					if (skill[value] == null) {
+						if (typeof card[value] === "object") {
+							skill[value] = get.copy(card[value]);
+						} else {
+							skill[value] = card[value];
+						}
+					} else if (typeof skill[value] === "object") {
 						Object.keys(card[value]).forEach(element => {
-							if (skill[value][element] == undefined) {
+							if (skill[value][element] == null) {
 								skill[value][element] = card[value][element];
 							}
 						});
@@ -8743,7 +8756,7 @@ ${e instanceof Error ? e.stack : String(e)}`);
 		}
 		if (info.round) {
 			const k = `${skillId}_roundcount`;
-			if (typeof info.group == "string") {
+			if (typeof info.group === "string") {
 				info.group = [info.group, k];
 			} else if (Array.isArray(info.group)) {
 				info.group.add(k);
@@ -8757,7 +8770,7 @@ ${e instanceof Error ? e.stack : String(e)}`);
 					}
 				},
 				intro: {
-					content: (storage, player) => {
+					content(storage, player) {
 						let str = "";
 						const info = get.info(name.slice(0, name.indexOf("_roundcount")));
 						if (info && info.addintro) {
@@ -8777,7 +8790,7 @@ ${e instanceof Error ? e.stack : String(e)}`);
 				forced: true,
 				popup: false,
 				silent: true,
-				content: async (event, trigger, player) => {
+				async content(event, trigger, player) {
 					if (lib.skill[event.name.slice(0, event.name.indexOf("_roundcount"))].round - (game.roundNumber - player.storage[event.name]) > 0) {
 						player.updateMarks();
 					} else {
@@ -8818,7 +8831,7 @@ ${e instanceof Error ? e.stack : String(e)}`);
 			}
 			info._priority = priority;
 		}
-		if (skillId[0] == "_") {
+		if (skillId[0] === "_") {
 			game.addGlobalSkill(skillId);
 		}
 	}
@@ -9447,59 +9460,59 @@ ${e instanceof Error ? e.stack : String(e)}`);
 		return new Promise(
 			query
 				? (resolve, reject) => {
-					lib.status.reload++;
-					const idbRequest = lib.db.transaction([storeName], "readwrite").objectStore(storeName).get(query);
-					idbRequest.onerror = event => {
-						if (typeof onError == "function") {
-							onError(event);
+						lib.status.reload++;
+						const idbRequest = lib.db.transaction([storeName], "readwrite").objectStore(storeName).get(query);
+						idbRequest.onerror = event => {
+							if (typeof onError == "function") {
+								onError(event);
+								game.reload2();
+								resolve();
+							} else {
+								game.reload2();
+								reject(event);
+							}
+						};
+						idbRequest.onsuccess = event => {
+							const result = event.target.result;
+							if (typeof onSuccess == "function") {
+								_status.dburgent = true;
+								onSuccess(result);
+								delete _status.dburgent;
+							}
 							game.reload2();
-							resolve();
-						} else {
-							game.reload2();
-							reject(event);
-						}
-					};
-					idbRequest.onsuccess = event => {
-						const result = event.target.result;
-						if (typeof onSuccess == "function") {
-							_status.dburgent = true;
-							onSuccess(result);
-							delete _status.dburgent;
-						}
-						game.reload2();
-						resolve(result);
-					};
-				}
+							resolve(result);
+						};
+					}
 				: (resolve, reject) => {
-					lib.status.reload++;
-					const idbRequest = lib.db.transaction([storeName], "readwrite").objectStore(storeName).openCursor(),
-						object = {};
-					idbRequest.onerror = event => {
-						if (typeof onError == "function") {
-							onError(event);
+						lib.status.reload++;
+						const idbRequest = lib.db.transaction([storeName], "readwrite").objectStore(storeName).openCursor(),
+							object = {};
+						idbRequest.onerror = event => {
+							if (typeof onError == "function") {
+								onError(event);
+								game.reload2();
+								resolve();
+							} else {
+								game.reload2();
+								reject(event);
+							}
+						};
+						idbRequest.onsuccess = event => {
+							const result = event.target.result;
+							if (result) {
+								object[result.key] = result.value;
+								result.continue();
+								return;
+							}
+							if (typeof onSuccess == "function") {
+								_status.dburgent = true;
+								onSuccess(object);
+								delete _status.dburgent;
+							}
 							game.reload2();
-							resolve();
-						} else {
-							game.reload2();
-							reject(event);
-						}
-					};
-					idbRequest.onsuccess = event => {
-						const result = event.target.result;
-						if (result) {
-							object[result.key] = result.value;
-							result.continue();
-							return;
-						}
-						if (typeof onSuccess == "function") {
-							_status.dburgent = true;
-							onSuccess(object);
-							delete _status.dburgent;
-						}
-						game.reload2();
-						resolve(object);
-					};
-				}
+							resolve(object);
+						};
+					}
 		);
 	}
 	/**
@@ -9544,47 +9557,47 @@ ${e instanceof Error ? e.stack : String(e)}`);
 		}
 		return query
 			? new Promise((resolve, reject) => {
-				lib.status.reload++;
-				const record = lib.db.transaction([storeName], "readwrite").objectStore(storeName).delete(query);
-				record.onerror = event => {
-					if (typeof onError == "function") {
-						onError(event);
+					lib.status.reload++;
+					const record = lib.db.transaction([storeName], "readwrite").objectStore(storeName).delete(query);
+					record.onerror = event => {
+						if (typeof onError == "function") {
+							onError(event);
+							game.reload2();
+							resolve();
+						} else {
+							game.reload2();
+							reject(event);
+						}
+					};
+					record.onsuccess = event => {
+						if (typeof onSuccess == "function") {
+							onSuccess(event);
+						}
 						game.reload2();
-						resolve();
-					} else {
-						game.reload2();
-						reject(event);
-					}
-				};
-				record.onsuccess = event => {
-					if (typeof onSuccess == "function") {
-						onSuccess(event);
-					}
-					game.reload2();
-					resolve(event);
-				};
-			})
+						resolve(event);
+					};
+				})
 			: game.getDB(storeName).then(object => {
-				const keys = Object.keys(object);
-				lib.status.reload += keys.length;
-				const store = lib.db.transaction([storeName], "readwrite").objectStore(storeName);
-				return Promise.allSettled(
-					keys.map(
-						key =>
-							new Promise((resolve, reject) => {
-								const request = store.delete(key);
-								request.onerror = event => {
-									game.reload2();
-									reject(event);
-								};
-								request.onsuccess = event => {
-									game.reload2();
-									resolve(event);
-								};
-							})
-					)
-				);
-			});
+					const keys = Object.keys(object);
+					lib.status.reload += keys.length;
+					const store = lib.db.transaction([storeName], "readwrite").objectStore(storeName);
+					return Promise.allSettled(
+						keys.map(
+							key =>
+								new Promise((resolve, reject) => {
+									const request = store.delete(key);
+									request.onerror = event => {
+										game.reload2();
+										reject(event);
+									};
+									request.onsuccess = event => {
+										game.reload2();
+										resolve(event);
+									};
+								})
+						)
+					);
+				});
 	}
 	/**
 	 * @param { string } key
@@ -9931,7 +9944,7 @@ ${e instanceof Error ? e.stack : String(e)}`);
 	triggerEnter(player) {
 		const next = game.createEvent("enterGame", false);
 		next.player = player;
-		next.setContent(() => {
+		next.setContent(async (event, trigger, player) => {
 			event.trigger("enterGame");
 		});
 		return next;
@@ -10637,6 +10650,7 @@ ${e instanceof Error ? e.stack : String(e)}`);
 		const players = game.players.concat(game.dead);
 		game.broadcast(addPlayer, id, target, character, character2, isNext, config);
 		const player = await addPlayer(id, target, character, character2, isNext, config);
+		await game.delay(2);
 		//分配座位号
 		const firstSeat = players.find(value => value.getSeatNum() == 1);
 		if (firstSeat) {
@@ -10846,7 +10860,6 @@ ${e instanceof Error ? e.stack : String(e)}`);
 			player.classList.add("out");
 			player.style.display = "none";
 			player.delete();
-			await game.delay(1);
 			//调整布局
 			const players = game.players.concat(game.dead);
 			const position = parseInt(player.dataset.position);
@@ -10888,6 +10901,7 @@ ${e instanceof Error ? e.stack : String(e)}`);
 		};
 		game.broadcast(removePlayer, player, config, get.copy(lib.configOL));
 		await removePlayer(player, config, get.copy(lib.configOL));
+		await game.delay(2);
 		//判断胜负，避免移除后对局变成死局
 		player.dieAfter();
 		return player;

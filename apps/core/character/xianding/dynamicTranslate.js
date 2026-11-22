@@ -1,6 +1,35 @@
 import { lib, game, ui, get, ai, _status } from "noname";
 
 const dynamicTranslates = {
+	dckaiji(player, skill) {
+		const bool = player.storage[skill];
+		let yang = "摸X张牌",
+			yin = "弃置至多X张牌";
+		if (bool) {
+			yin = `<span class="bluetext">${yin}</span>`;
+		} else {
+			yang = `<span class="firetext">${yang}</span>`;
+		}
+		const start = `转换技。出牌阶段限一次，你可以：`,
+			end = `（X为你的体力上限且至多为5）。`;
+		return `${start}阳：${yang}；阴：${yin}${end}`;
+	},
+	dcranlv(player, skill) {
+		if (!player.storage[skill]?.length) {
+			return lib.translate[skill + "_info"];
+		}
+		let list = ["横置或重置至多四名角色", "摸三张牌", "弃置一名角色两张牌"];
+		for (let i in list) {
+			if (player.storage[skill][i] === false) {
+				list[i] = `<span style="text-decoration: line-through;">${list[i]}</span>`;
+			}
+		}
+		return `有角色受到非属性伤害后，你可选择一项执行后移除：1.${list[0]}；2.${list[1]}；3.${list[2]}。`;
+	},
+	dcsbxieshu(player, skill) {
+		const usable = player.storage[skill] ? "" : "每回合限一次，";
+		return `${usable}你使用牌指定其他角色为目标后，你可令此牌对其中一个目标无效并获得其一张牌。`;
+	},
 	dcsbjingmou(player) {
 		const bool = player.storage.dcsbjingmou;
 		let yang = "你可令此牌无效并弃置牌堆顶一张牌，若与此牌花色一致对其造成1点火焰伤害",
@@ -14,18 +43,18 @@ const dynamicTranslates = {
 			end = `。若你移除过所有花色与类型，你获得${get.poptip("dcsbdingnan")}。`;
 		return `${start}阳：${yang}；阴：${yin}${end}`;
 	},
-	dclongnu(player) {
-		const bool = player?.hasSkill("dclongnu_2") || player?.getStorage("dclongnu", false);
-		let yang = "你失去1点体力并摸等同于你损失体力值张牌，然后本回合你的红色手牌均视为【火杀】（无距离限制）",
-			yin = "你减1点体力上限并摸等同于你体力值张牌，然后本回合你的锦囊牌均视为【雷杀】（无次数限制且不计入次数限制）";
-		if (bool) {
-			yin = `<span class='bluetext'>${yin}</span>`;
-		} else {
-			yang = `<span class='firetext'>${yang}</span>`;
+	dcsbzhubo(player, skill) {
+		let awaken1 = false,
+			awaken2 = false;
+		if (player.storage["dcsbzhubo"]) {
+			({ awaken1, awaken2 } = player.storage["dcsbzhubo"]);
 		}
-		let start = "转换技，锁定技。出牌阶段开始时，",
-			end = "。";
-		return `${start}阳：${yang}；阴：${yin}${end}`;
+		let str = "有角色于其出牌阶段外造成伤害时";
+		if (awaken2) str = "你于出牌阶段外造成或受到伤害时";
+		else if (awaken1) str = "有角色于其出牌阶段外受到伤害时";
+		let str2 = awaken2 ? "" : "失去1点体力并";
+		let str3 = awaken2 ? "自己" : "其";
+		return `每回合限一次，${str}，你可以${str2}选择一项：1.你与${str3}各摸两张牌；2.此伤害+1。`;
 	},
 	fengliao(player) {
 		const bool = player.storage.fengliao;
@@ -237,14 +266,14 @@ const dynamicTranslates = {
 	},
 	dcsbmengmou(player) {
 		const bool = player.storage.dcsbmengmou;
-		let yang = "你可以令该角色使用至多X张【杀】，且其每以此法造成1点伤害，其回复1点体力",
+		let yang = "你可以令该角色使用至多X张【杀】，且其每以此法造成1点伤害，你与其回复1点体力",
 			yin = "你可令该角色打出至多X张【杀】，然后其失去Y点体力";
 		if (bool) {
 			yin = `<span class='bluetext'>${yin}</span>`;
 		} else {
 			yang = `<span class='firetext'>${yang}</span>`;
 		}
-		let start = "转换技。①游戏开始时，你可以转换此技能状态；②每回合每项各限一次，当你得到其他角色的手牌后，或其他角色得到你的手牌后：",
+		let start = "转换技。①游戏开始时，你可以转换此技能状态；②每回合每项各限一次，当你得到其他角色的牌后，或其他角色得到你的牌后：",
 			end = "（X为你的体力上限，Y为X-其打出【杀】数）。";
 		return `${start}阳：${yang}；阴：${yin}${end}`;
 	},
